@@ -646,7 +646,214 @@ use admin
 db.shutdownServer()
 ```
 
+# [Sharding](https://docs.mongodb.com/manual/sharding/#sharding)
 
+## [Deploy a Sharded Cluster](https://docs.mongodb.com/manual/tutorial/deploy-shard-cluster/#deploy-a-sharded-cluster)
+
+```
+sudo mkdir -p /data/mongodb/data/configServer
+sudo mkdir -p /data/mongodb/data/shard1
+sudo mkdir -p /data/mongodb/data/shard2
+sudo mkdir -p /data/mongodb/data/shard3
+sudo mkdir -p /data/mongodb/log
+sudo mkdir -p /data/mongodb/pid
+```
+
+### Create the Config Server Replica Set[¶](https://docs.mongodb.com/manual/tutorial/deploy-shard-cluster/#create-the-config-server-replica-set)
+
+If using a configuration file, set:
+
+```
+sharding:
+  clusterRole: configsvr
+replication:
+  replSetName: <replica set name>
+net:
+  bindIp: localhost,<hostname(s)|ip address(es)>
+```
+
+If using the command line options, start the [`mongod`](https://docs.mongodb.com/manual/reference/program/mongod/#bin.mongod) with the `--configsvr`, `--replSet`, `--bind_ip`, and other options as appropriate to your deployment. For example:
+
+```
+sudo mongod --configsvr --replSet rscs --dbpath /data/mongodb/data/configServer --bind_ip 0.0.0.0
+```
+
+Connect to one of the config servers.[¶](https://docs.mongodb.com/manual/tutorial/deploy-shard-cluster/#connect-to-one-of-the-config-servers)
+
+```
+mongo --port 27019
+```
+
+Initiate the replica set.[¶](https://docs.mongodb.com/manual/tutorial/deploy-shard-cluster/#initiate-the-replica-set)
+
+```
+rs.initiate(
+  {
+    _id: "rscs",
+    configsvr: true,
+    members: [
+      { _id : 0, host : "server1:27019" },
+      { _id : 1, host : "server2:27019" },
+      { _id : 2, host : "server3:27019" }
+    ]
+  }
+)
+```
+
+### Create the Shard Replica Sets[¶](https://docs.mongodb.com/manual/tutorial/deploy-shard-cluster/#create-the-shard-replica-sets)
+
+Start each member of the shard replica set.[¶](https://docs.mongodb.com/manual/tutorial/deploy-shard-cluster/#start-each-member-of-the-shard-replica-set)
+
+If using a configuration file, set:
+
+```
+sharding:
+    clusterRole: shardsvr
+replication:
+    replSetName: <replSetName>
+net:
+    bindIp: localhost,<ip address>
+```
+
+If using the command line option, start the [`mongod`](https://docs.mongodb.com/manual/reference/program/mongod/#bin.mongod) with the `--replSet`, and `--shardsvr`, `--bind_ip` options, and other options as appropriate to your deployment. For example:
+
+```
+mongod --shardsvr --replSet <replSetname>  --dbpath <path> --bind_ip localhost,<hostname(s)|ip address(es)>
+```
+
+For example:
+
+```
+sudo mongod --shardsvr --replSet rsss --dbpath /data/mongodb/data/shard1 --bind_ip 0.0.0.0
+sudo mongod --shardsvr --replSet rsss2 --dbpath /data/mongodb/data/shard2 --bind_ip 0.0.0.0  --port 27028
+sudo mongod --shardsvr --replSet rsss3 --dbpath /data/mongodb/data/shard3 --bind_ip 0.0.0.0  --port 27038
+```
+
+Connect to one member of the shard replica set.[¶](https://docs.mongodb.com/manual/tutorial/deploy-shard-cluster/#connect-to-one-member-of-the-shard-replica-set)
+
+Initiate the replica set.[¶](https://docs.mongodb.com/manual/tutorial/deploy-shard-cluster/#id1)
+
+```
+mongo --port 27018
+rs.initiate(
+  {
+    _id: "rsss",
+    members: [
+      { _id : 0, host : "server1:27018" },
+      { _id : 1, host : "server2:27018" },
+      { _id : 2, host : "server3:27018" }
+    ]
+  }
+)
+mongo --port 27028
+rs.initiate(
+  {
+    _id: "rsss2",
+    members: [
+      { _id : 0, host : "server1:27028" },
+      { _id : 1, host : "server2:27028" },
+      { _id : 2, host : "server3:27028" }
+    ]
+  }
+)
+mongo --port 27038
+rs.initiate(
+  {
+    _id: "rsss3",
+    members: [
+      { _id : 0, host : "server1:27038" },
+      { _id : 1, host : "server2:27038" },
+      { _id : 2, host : "server3:27038" }
+    ]
+  }
+)
+```
+
+### Start a mongos for the Sharded Cluster[¶](https://docs.mongodb.com/manual/tutorial/deploy-shard-cluster/#start-a-mongos-for-the-sharded-cluster)
+
+If using a configuration file, set the [`sharding.configDB`](https://docs.mongodb.com/manual/reference/configuration-options/#sharding.configDB) to the config server replica set name and at least one member of the replica set in `<replSetName>/<host:port>` format.
+
+```
+sharding:
+  configDB: <configReplSetName>/cfg1.example.net:27019,cfg2.example.net:27019
+net:
+  bindIp: localhost,<hostname(s)|ip address(es)>
+```
+
+If using command line parameters start the [`mongos`](https://docs.mongodb.com/manual/reference/program/mongos/#bin.mongos) and specify the `--configdb`, `--bind_ip`, and other options as appropriate to your deployment. For example:
+
+```
+mongos --configdb <configReplSetName>/cfg1.example.net:27019,cfg2.example.net:27019,cfg3.example.net:27019 --bind_ip localhost,<hostname(s)|ip address(es)>
+```
+
+For example:
+
+```
+sudo mongos --configdb rscs/server1:27019,server2:27019,server3:27019 --bind_ip 0.0.0.0 --port 27016
+```
+
+Connect to the Sharded Cluster[¶](https://docs.mongodb.com/manual/tutorial/deploy-shard-cluster/#connect-to-the-sharded-cluster)
+
+```
+mongo --port 27016
+```
+
+Add Shards to the Cluster[¶](https://docs.mongodb.com/manual/tutorial/deploy-shard-cluster/#add-shards-to-the-cluster)
+
+```
+sh.addShard( "rsss/server1:27018,server2:27018,server3:27018")
+sh.addShard( "rsss2/server1:27028,server2:27028,server3:27028")
+sh.addShard( "rsss3/server1:27038,server2:27038,server3:27038")
+```
+
+### Enable Sharding for a Database[¶](https://docs.mongodb.com/manual/tutorial/deploy-shard-cluster/#enable-sharding-for-a-database)
+
+```
+sh.enableSharding("test")
+```
+
+### Shard a Collection[¶](https://docs.mongodb.com/manual/tutorial/deploy-shard-cluster/#shard-a-collection)
+
+```
+sh.shardCollection("test.testshard", { item : "hashed" } )
+```
+
+```
+db.testshard.insertMany([
+   { item: "journal", qty: 25, tags: ["blank", "red"], dim_cm: [ 14, 21 ] },
+   { item: "notebook", qty: 50, tags: ["red", "blank"], dim_cm: [ 14, 21 ] },
+   { item: "paper", qty: 100, tags: ["red", "blank", "plain"], dim_cm: [ 14, 21 ] },
+   { item: "planner", qty: 75, tags: ["blank", "red"], dim_cm: [ 22.85, 30 ] },
+   { item: "postcard", qty: 45, tags: ["blue"], dim_cm: [ 10, 15.25 ] }
+]);
+db.testshard.stats()
+```
+
+# [Administration](https://docs.mongodb.com/manual/administration/#administration)
+
+## [MongoDB Backup Methods](https://docs.mongodb.com/manual/core/backups/#mongodb-backup-methods)
+
+### [Back Up and Restore with Filesystem Snapshots](https://docs.mongodb.com/manual/tutorial/backup-with-filesystem-snapshots/#back-up-and-restore-with-filesystem-snapshots)
+
+### [Back Up and Restore with MongoDB Tools](https://docs.mongodb.com/manual/tutorial/backup-and-restore-tools/#back-up-and-restore-with-mongodb-tools)
+
+[`mongodump`](https://docs.mongodb.com/manual/reference/program/mongodump/#bin.mongodump) only captures the documents in the database. The resulting backup is space efficient, but [`mongorestore`](https://docs.mongodb.com/manual/reference/program/mongorestore/#bin.mongorestore) or [`mongod`](https://docs.mongodb.com/manual/reference/program/mongod/#bin.mongod) must rebuild the indexes after restoring data.
+
+When you run [`mongodump`](https://docs.mongodb.com/manual/reference/program/mongodump/#bin.mongodump) without any arguments, the command connects to the MongoDB instance on the local system (e.g. `localhost`) on port `27017` and creates a database backup named `dump/` in the current directory.
+
+```
+mongodump
+mongodump --oplog --out=/data/backup/
+mongodump --host=mongodb.example.net --port=27017
+mongodump --out=/data/backup/
+mongodump --collection=myCollection --db=test
+mongodump --host=mongodb1.example.net --port=3017 --username=user --password="pass" --out=/opt/backup/mongodump-2013-10-24
+mongorestore --port=<port number> <path to the backup>
+mongorestore dump-2013-10-25/
+mongorestore --oplogReplay
+mongorestore --host=mongodb1.example.net --port=3017
+mongorestore --host=mongodb1.example.net --port=3017 --username=user  --authenticationDatabase=admin /opt/backup/mongodump-2013-10-24
+```
 
 # [Reference](https://docs.mongodb.com/manual/reference/)
 
@@ -668,3 +875,4 @@ db.getUsers()
 db.getUsers({ filter: { mechanisms: "SCRAM-SHA-256" } })
 ```
 
+# [Ops Manager](https://docs.opsmanager.mongodb.com/current/)
